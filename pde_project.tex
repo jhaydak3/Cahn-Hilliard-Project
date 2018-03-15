@@ -1,0 +1,550 @@
+\documentclass[]{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{fullpage}
+\usepackage{biblatex}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage[hidelinks]{hyperref}
+\usepackage{multirow}
+\usepackage{cellspace} 
+\usepackage{amsthm}
+\theoremstyle{definition}
+\usepackage[framed,numbered,autolinebreaks]{mcode}
+\usepackage{pgfplots} 
+\usepackage{adjustbox}
+\usepackage{listings}
+\usepackage{changepage}
+\newtheorem{exmp}{Ex}[section]
+\newcommand*\diff{\mathop{}\!\mathrm{d}}
+\newcommand*\Diff[1]{\mathop{}\!\mathrm{d^#1}}
+\numberwithin{equation}{section}
+\title{Final Project: The Cahn-Hilliard Equation}
+\author{Jonathan Haydak}
+\numberwithin{equation}{section}
+\begin{document}
+	\maketitle
+	\setlength\cellspacetoplimit{4pt}
+	\setlength\cellspacebottomlimit{4pt}
+	\tableofcontents
+	\newcommand{\dydx}[2]{\frac{\text{d}{#1}}{\text{d} {#2}}}
+	\newcommand{\der}[1]{\frac{\partial}{\partial {#1}}}
+	\part{Introduction}
+	\section{Purpose}
+	Phase dynamics have fascinated chemists and chemical engineers for centuries. In engineering and science, although correlations and models to exist for describing phase separation and behavior, these are mostly obtained via experiment or semi-empirical models. This is no surprise, as precisely defining the dynamics of these systems is often a daunting task. Consider the situation of oil and water being mixed together. Because these substances are immiscible, they will eventually separate out into distinct phases. Although this is an everyday phenomena that every one has witnessed countless times, describing what is going on mathematically is quite challenging. 
+	
+	The purpose of this project is to explore the Cahn-Hilliard (C-H) equation. Both the one-dimensional and two-dimensional cases will be considered. The accuracy, run time, and stability of various explicit, semi-implicit, and implicit methods will be considered. In addition to this, there will be a run time comparison of Matlab and a Python script importing Fortran modules to investigate how the language influences affects run time. Stability analysis will be attempted on a linearized form of the C-H equation. Because the (C-H) is nonlinear and contains a fourth order spatial derivative, it is very stiff and extremely short time steps will be used. Calculations will be run on the Chemical and Biomolecular Engineering department's cluster at Georgia Tech.
+	\section{Background}
+	Typically mass transport occurs across a concentration gradient according to Fick's laws. The first law describes steady-state mass transfer
+	\begin{equation}
+		J = -D \nabla c 
+	\end{equation}
+	where $D$ is the diffusion coefficient, $c$ is concentration, and $J$ is the flux. Time dependent mass transfer obeys Fick's second law
+	\begin{equation}
+		\frac{\partial c}{\partial t} = D \nabla^2 c
+	\end{equation}
+	However, in the case of phase separation mass transfer occurs \textit{against} the concentration gradient and therefore does \textit{not} follow Fick's laws of diffusion. Rather, species undergoing phase separation instead obey the Cahn-Hilliard equation
+	\begin{equation}
+		\frac{\partial c}{\partial t} = D \nabla^2 (c^3 - c -\alpha^2 \nabla^2 c) \label{eq:CH1}
+	\end{equation}
+	Here $\alpha$ is related to the length of transition region between separate components. The term $\mu = c^3 - c - \alpha^2 \nabla^2 c$ is the chemical potential and therefore \eqref{eq:CH1} can also be written as
+	\begin{equation}
+		\frac{\partial c}{\partial t} = D \nabla^2 \mu \label{eq:CH2}
+	\end{equation}
+	The derivation of this equation comes from using the gradient of chemical potential as the mechanism behind mass transfer. Unlike Fick's laws, this equation is nonlinear and contains fourth order spatial derivative, giving rise to very interesting phenomena. To begin with, we will be considering an isolate system with no outside flux of mass or chemical potential contributing to the system. In this case, the most natural boundary conditions become
+	\begin{equation}
+		\frac{\partial u}{\partial \mathbf{n}}\bigg|_{\Omega} = \frac{\partial \mu}{\partial \mathbf{n}}\bigg|_{\Omega} = 0 \label{eq:CH3}
+	\end{equation}
+	where $\Omega$ is the boundary of the region being considered and $\mathbf{n}$ is the unit normal to the surface of the boundary. For the one-dimensional case, the region $x \in [0,1]$ will be considered. For two dimensions, we will extend the region to $(x,y) \in [0,1] \times [0,1]$.
+	\section{1-Dimensional Case}
+	In one dimension, the C-H equation becomes
+	\begin{align}
+		\frac{\partial c}{\partial t} &= D \frac{\partial ^2 \mu}{\partial x^2} \nonumber \\
+		&=D \frac{\partial^2 }{\partial x^2} \left(c^3 - c - \alpha^2 \frac{\partial^2 c}{\partial x^2}\right) \label{eq:1d1}
+	\end{align} 
+	with the boundary conditions
+	\begin{equation}
+		\frac{\partial c}{\partial x} \bigg|_{x=0} = \frac{\partial c}{\partial x}\bigg|_{x = 1} = \frac{\partial \mu}{\partial x} \bigg| _{x=0} = \frac{\partial \mu}{\partial x} \bigg| _{x = 1} \label{eq:1dBC}
+	\end{equation}
+	\subsection{Explicit}
+	The first method we will consider is an explicit method using a forward difference in time and centered differences in the spatial derivatives. Let $ \left\{(x_j ,t_n)\right\}$  denote the set of lattice points on the region where $x_j = j \Delta x$ for $j =  1, 2, \dots, N$ and $\Delta x = \frac{1}{N-1}$. Similarly, let $c_j^n = c(x = x_j, t = t_n)$ where $t_n = n\Delta t$ for $n = 1,2,\ldots,M$ and $\Delta t = \frac{T}{M-1}$.The discrete version of \eqref{eq:1d1} becomes
+	\begin{align*}
+		\frac{c^{n+1}_j - c^{n}_j}{\Delta t} &= D \frac{\mu^n_{j+1} - 2\mu^n_j + \mu^n_{j-1}}{\Delta x^2} \\
+		&= D \left[\frac{(c_{j+1}^n)^3 - 2(c_j^n)^3 + (c_{j-1}^n)^3}{\Delta x^2} - \frac{c_{j+1}^n - 2c_j^n + c_{j-1}^n}{\Delta x^2} - \alpha ^2 \frac{c_{j+2}^n -4c_{j+1}^n + 6c_j^n - 4c_{j-1}^n + c_{j-2}^n}{\Delta x^4} \right]				
+	\end{align*}
+	\begin{equation}
+		c_j^{n+1} =  \Delta t D \left[\frac{(c_{j+1}^n)^3 - 2(c_j^n)^3 + (c_{j-1}^n)^3}{\Delta x^2} - \frac{c_{j+1}^n - 2c_j^n + c_{j-1}^n}{\Delta x^2} - \alpha ^2 \frac{c_{j+2}^n -4c_{j+1}^n + 6c_j^n - 4c_{j-1}^n + c_{j-2}^n}{\Delta x^4} \right]	+ c_j^n \label{eq:explicit1}
+	\end{equation}
+	From the boundary conditions, 
+	\begin{gather}
+		\frac{c_1^n - c_0^n}{\Delta x} = 0 \implies c_1^n = c_0^n \\
+		\frac{c_{N+1}^n - c_{N}^n}{\Delta x} = 0 \implies c_{N+1}^n = c_{N}^n 
+	\end{gather}
+	Here, we are treating the points at $j=0$ as a ghost point. The boundary conditions relating to chemical potential involve a little more work
+	\begin{gather}
+		\frac{\mu_1^n - \mu^0_n }{\Delta x} = 0 \nonumber\\
+		 \frac{(c_1^n)^3 - (c_0^n)^3}{\Delta x} - \frac{c_1^n - c_0^n }{\Delta x} - \frac{(c_2^n -2c_1^n +c_0^n) - (c_1^n - 2c_0 + c_{-1}^n)}{\Delta x^4} = 0 \nonumber
+		 \intertext{using the fact that $c_0^n = c_1^n$} 
+		 c_2^n - 3c_1^n +3c_0^n - c_{-1}^n \nonumber \\
+		 c_2^n = c_{-1}^n
+	\end{gather}
+	By the same argument, the final condition becomes
+	\begin{equation}
+		\frac{\mu^n_{N} - \mu^n_{N-1}}{\Delta x} = 0 \implies c_{N+2}^n = c^n_{N-1}
+	\end{equation}
+	
+	\subsection{Semi-implicit}
+	The nonlinearity and fourth order spatial derivative make a full implicit scheme of the C-H equation horribly expensive in terms of computing time. This is because a full implicit method would involve solving systems of nonlinear equations with very short $\Delta t$. To get around this, we consider a semi-implicit method that can be implemented without having to solve nonlinear equations. The main trick here is to replace $(c_j^n)^3$ with $ c_j^{n+1}(c_j^{n})^2$. For ease of notation, let the operator $D_{xx}$ be defined as
+	\begin{equation*}
+		D_{xx}c_j^n = c_{j+1}^n - 2c_j^n + c_j^n
+	\end{equation*}
+	Now, slightly modifying \eqref{eq:explicit1} to contain implicit terms 
+	\begin{align*}
+		c_j^{n+1} = D\Delta t  \left[\frac{D_{xx}c_{j}^{n+1} (c_{j}^n)^2}{\Delta x^2} - \frac{D_{xx}c_j^{n+1}}{\Delta x^2} - \alpha^2 \frac{D_{xx}^2 c_j^n}{\Delta x^4}\right] + c_j^n \\
+	\end{align*}
+	Letting  $r = \frac{D\Delta t }{\Delta x^2}$,
+	\begin{gather*}
+		rD_{xx}c_j^{n+1} - rD_{xx}c_{j}^{n+1}(c_{j}^n)^2 + c_j^{n+1} = -\alpha^2 D \Delta t \frac{D_{xx}^2 c_j^n}{\Delta x^4} + c_j^n \\
+		r(c_{j+1}^{n+1} - 2c_j^{n+1} + c_{j-1}^{n+1}) - r \left(c_{j+1}^{n+1}(c_{j+1}^n)^2 - 2 c_{j}^{n+1}(c_j^n)^2 + c_{j-1}^{n+1}(c_{j-1}^n)^2\right) + c_j^{n+1} = -\alpha^2 D \Delta t \frac{D_{xx}^2 c_j^n}{\Delta x^4} + c_j^n \\
+		c_{j+1}^{n+1} \left(r - r (c_{j+1}^n)^2\right) + c_j^{n+1} \left(-2r + 2r(c_j^{n})^2 + 1\right) + c_{j-1}^{n+1} \left(r - r(c_{j-1}^{n})^2\right) =  -\alpha^2 D \Delta t \frac{D_{xx}^2 c_j^n}{\Delta x^4} + c_j^n
+	\end{gather*}
+	Finally, expanding the operator on the RHS, 
+	\begin{equation}
+	c_{j+1}^{n+1} \left(r - r (c_{j+1}^n)^2 \right) + c_j^{n+1} \left(-2r + 2r(c_j^{n})^2 + 1\right) + c_{j-1}^{n+1} \left(r - r(c_{j-1}^{n})^2\right) =  -\alpha^2 D \Delta t\frac{c_{j+2}^n -4c_{j+1}^n + 6c_j^n - 4c_{j-1}^n + c_{j-2}^n}{\Delta x^4} + c_j^n
+	\end{equation}
+	Using this relation for $j = 1,2,\ldots, N$ yields a system of equations:
+	\begin{gather*}
+	\begin{bmatrix}
+	-r + r(c_1^n)^2+1 & r - r(c_2^n)^2 & 0 & 0 & 0 & \ldots &0& 0\\
+	%-2r+2r(c_1^n)^2 & 2r-2r(c_2^n)^2 + 1 & 0 & 0 & 0 & \ldots &0& 0\\
+	 0 & r-r(c_1^n)^2 & -2r+2r(c_2^n)^2 + 1 & r - r(c_3^n)^2 & 0 & \ldots &0& 0\\
+	 0 & 0 & r-r(c_2^n)^2 & -2r+2r(c_3^n)^2+1 & r - r(c_4^n)^2 & \ldots & 0&0\\
+	 \vdots & \vdots & \vdots & \vdots & \vdots & \ddots \\ &  \\
+	 0 & 0 & \ldots & 0 &   r - r(c_{N-1}^n)^2  & -r + r(c_N^n)^2 +1 
+	\end{bmatrix}
+	\begin{bmatrix}
+	c_{1}^{n+1} \\
+	c_{2}^{n+1} \\
+	c_{3}^{n+1} \\
+	c_{4}^{n+1} \\
+	\vdots \\
+	c_{N-1}^{n+1}\\
+	c_{N}^{n+1}
+	\end{bmatrix} = \\
+	-\frac{\alpha^2D \Delta t}{\Delta x^4}\begin{bmatrix}
+	c_{3}^n -4c_{2}^n + 6c_1^n - 4c_{1}^n + c_{2}^n \\
+	c_{4}^n -4c_{4}^n + 6c_2^n - 4c_{1}^n + c_{1}^n \\
+	c_{5}^n -4c_{4}^n + 6c_3^n - 4c_{2}^n + c_{1}^n \\
+	\vdots \\
+	c_{N-1}^n -4c_{N}^n + 6c_N^n - 4c_{N-1}^n + c_{N-2}^n
+	\end{bmatrix} + \begin{bmatrix}
+	c_1^n \\
+	c_2^n \\
+	c_3^n \\
+	\vdots \\
+	c_N^n
+	\end{bmatrix}
+	\end{gather*}
+	\section{Stability}
+	In this section, we seek to find conditions for the $L^2$ stability of several schemes. As noted previously, the non-linearity of the C-H equation makes normal Von-Neumann analysis difficult. Instead, we will examine the stability of a slightly modified equation:
+	\begin{equation}
+			\frac{\partial c}{\partial t}=D \frac{\partial^2 }{\partial x^2} \left(A^2 c - c - \alpha^2 \frac{\partial^2 c}{\partial x^2}\right) \label{eq:s1}
+	\end{equation}
+	where $A$ is some constant.
+	\subsection{Explicit Method} Starting from the modified form of \eqref{eq:explicit1} and taking the discrete Fourier Transform
+	\begin{align*}
+		\hat{C}^{n+1} &= \left[rA^2e^{i\xi} -2rA^2 + rA^2e^{-i\xi} - r e^{i\xi} + 2r - re^{-i\xi} - Re^{2i\xi} + 4Re^{i\xi} - 6R + 4Re^{-i\xi} - Re^{-2i\xi}\right] \hat{C}^n \\
+		&= \left[2rA^2(\cos(\xi) - 1)+ 2r (1 - \cos(\xi)) - 2R \cos(2\xi) + 8R\cos(\xi) - 6R \right] \hat{C}^n
+	\end{align*}
+	where $r = D\Delta t/\Delta x^2$ and $R = \alpha^2D\Delta t/\Delta x^4$
+	Now we consider the Fourier coefficient:
+	\begin{align*}
+		\rho &= 2r\left(\cos(\xi) - 1\right) ( A^2 - 1) + 2R \sin^2(\xi) - 2R\cos^2(\xi) + 8R\cos(\xi) - 6R \\
+		&= 2r\left(1 - \cos(\xi) \right) ( 1 - A^2) + 2R - 2R\cos^2(\xi) - 2R\cos^2(\xi) + 8R\cos(\xi) - 6R \\
+		&= 4r \sin^2(.5\xi) (1-A^2) - 4R\cos^2(\xi) + 8R\cos(\xi) - 4R \\
+		&= 4r \sin^2(.5\xi) (1-A^2) - 4R \left( \cos^2(\xi) -2\cos(\xi) +1 \right)
+	\end{align*}
+	To find conditions for the Fourier coefficient to be less than one in magnitude, we consider that the possible extrema in practice occur will occur at  $\xi = \pm \pi$, where this is inferenced by looking at linear combinations of the two above terms.
+		\begin{figure}[H]
+		\centering
+		\includegraphics[scale=.7]{coef.png} 
+		\caption{Linear combinations of the terms in the Fourier coefficient.}
+		\label{fig:coef}
+	\end{figure}
+	 We can ignore other possible extreme because for the $\alpha$ being considered in this project, $r$ and $R$ on the same order of magnitude, and the only relevant extrema are those are $\pm \pi$. Hence,
+	\begin{align*}
+		\rho &= 4r (1-A^2) - 16R 
+	\end{align*}
+	where in practice this will be negative because it is the dominating term (see previous figure).  this requirement yields, 
+	\begin{gather*}
+		16R - 4r (1-A^2) \leq 16R \leq 1 \\
+		16R \leq 1 \\
+		\Delta t \leq \alpha^2 D \Delta x^4/16
+	\end{gather*}
+	So we see that for the fully explicit method, we have a time step that must scale with $\Delta x^4$ for stability. Moreover, physical diffusion coefficients are often very small values. For this reason, we will assume $D \geq 1$ in most simulations. Otherwise, the stability requirements would be insurmountable.
+	\section{1-D Simulations}
+	Because mass should be conserved, this simple principle gives us a measure by which to assess the quality of each numerical scheme. Ideally, the mass should remain unchanged regardless of the time over which the simulation is run. However, the change in mass with time can provide insight into the reliability of these schemes.
+	\begin{center}
+	\begin{tabular} {c|c|c|c|c|c|c|c|c|}
+		\cline{2-9}
+		&  \multicolumn{8}{c|}{$\int_{0}^{1}c(x) \diff{x}$} \\  \cline{2-9}
+		&  \multicolumn{8}{c|}{$\Delta t=1\times10^{-11}$, $\Delta x = .5\times 10^{-3}$, $D = 100$, $\gamma = .2$} \\ \cline{2-9} 
+		scheme & t=0 & t=1e-10 & t=1e-9 & t=1e-8 & t=1e-7 & t=1e-6 & t=1e-5 & t=1e-4 \\ 
+		\hline
+		\multicolumn{1}{|c|}{explicit} & -.3300 &  -.3300 &  -.3300&  -.3300 & -.3300 & -.3296 & -.3365 & -.1317 \\
+		\hline
+		\multicolumn{1}{|c|}{semi-implicit} & -.3300 & -.3300 & -.3300 & -.3300 & -.3300 & -.3301 & -.3293 & -.3303  \\
+		\hline
+		&  \multicolumn{8}{c|}{$\Delta t=1\times10^{-10}$, $\Delta x = .5\times 10^{-3}$, $D = 100$, $\gamma = .2$} \\ \cline{2-9} 
+		\hline
+		\multicolumn{1}{|c|}{explicit} & -.3300 &  -.3300 &  NaN &  NaN & NaN & NaN & NaN & NaN \\
+		\hline
+		\multicolumn{1}{|c|}{semi-implicit} & -.3300 & -.3300 & -.3300 & NaN & NaN & NaN & NaN & NaN  \\
+		\hline
+	\end{tabular}
+	\end{center}
+As shown in the above table, extremely small time step sizes are required for modest spatial step sizes. The semi-implicit method offers greater stability than the fully explicit scheme as expected.
+		\begin{center}
+	\begin{figure}[H]
+		\centering
+		\includegraphics[scale=.7]{semi_1.png} 
+		\caption{Semi-implicit scheme time evolution of C-H equation}
+		\label{fig:semi_1}
+	\end{figure}
+\end{center}
+\section{C-H 2 Dimensional Case}
+The 2-D case of the C-H equation is introduces more complications than the 1-D case. Namely, the algebra is more involved now that there are two spatial variables and the computation time is longer now that the number of grid points increases by a factor of $N$.
+\subsection{Explicit Method}
+The derivation for the 2-D case is analogous to the 1D case. Thus, we can come up with a numerical scheme just by extending \eqref{eq:explicit1} to two dimensions.
+\begin{align}
+	c_{j,k}^{n+1} &= \Delta t D \left[\frac{(c_{j+1,k}^n)^3 - 2(c_{j,k}^n)^3 + (c_{j-1,k}^n)^3}{\Delta x^2} +\frac{(c_{j,k+1}^n)^3 - 2(c_{j,k}^n)^3 + (c_{j,k-1}^n)^3}{\Delta y^2}  - \frac{c_{j+1,k}^n -2c_{j,k}^n + c_{j-1,k}^n}{\Delta x^2} \right. \nonumber\\
+	&\, \left. - \frac{c_{j,k+1}^n -2c_{j,k}^n + c_{j,k-1}^n}{\Delta y^2} - \alpha^2 \frac{c_{j+2,k}^n - 4c_{j+1,k}^n + 6c_{j,k}^n - 4c_{j-1,k}^n + c_{j-2,k}^n}{\Delta x^4} \right.  \nonumber \\
+	&\, \left. - \alpha^2 \frac{c_{j,k+2}^n - 4c_{j,k+1}^n + 6c_{j,k}^n - 4c_{j,k-1}^n + c_{j,-2k}^n}{\Delta y^4} \right] + c_{j,k} \label{eq:2d_explicit}
+\end{align}
+The corresponding boundary conditions are
+\begin{gather*}
+	c_{1,k}^n = c_{0,k}^n \\
+	c_{j,1}^n = c_{j,0}^n \\
+	c_{N+1,k}^n = c_{N,k}^n \\
+	c_{j,N+1}^n = c_{j,N}^n \\
+	c_{2,k}^n = c_{-1,k}^n \\
+	c_{j,2}^n = c_{j,-1}^n \\
+	c_{N+2,k}^n = c_{N-1,k}^n \\
+	c_{j,N+2}^n = c_{j,N-1}
+\end{gather*}
+\subsection{Alternating Direction Implicit}
+As before, we define the operators
+\[
+	D_{xx}c_{j,k}^n = c_{j+1,k}^n - 2 c_{j,k}^n + c_{j-1,k}^n, \qquad D_{yy}c_{j,k}^n = c_{j,k+1}^n - 2c_{j,k}^n + c_{j,k-1}^n 
+\]
+Now, consider a semi-implicit scheme split into the following two steps
+\begin{align*}
+	c_{j,k}^{n+.5} = .5 D \Delta t \left[\frac{D_{xx}c_{j,k}^{n+.5}(c_{j,k}^n)^2}{\Delta x^2} + \frac{D_{yy}(c_{j,k}^n)^3}{\Delta y^2} - \frac{D_{xx}c_{j,k}^{n+.5}}{\Delta x^2} - \frac{D_{yy}c_{j,k}^n}{\Delta y^2} - \alpha^2 \frac{D_{xx}^2 c_{j,k}^n}{\Delta x^4} - \alpha^2 \frac{D_{yy}^2 c_{j,k}^n}{\Delta y^4}\right] + c_{j,k}^n \\
+	c_{j,k}^{n+1} = .5 D \Delta t \left[\frac{D_{xx}(c_{j,k}^{n+.5})^3}{\Delta x^2} + \frac{D_{yy}c_{j,k}^{n+1}(c_{j,k}^{n+.5})^2}{\Delta y^2} - \frac{D_{xx}c_{j,k}^{n+.5}}{\Delta x^2} - \frac{D_{yy}c_{j,k}^{n+1}}{\Delta y^2} - \alpha^2 \frac{D_{xx}^2 c_{j,k}^{n+.5}}{\Delta x^4} - \alpha^2 \frac{D_{yy}^2 c_{j,k}^{n+.5}}{\Delta y^4}\right] + c_{j,k}^{n+.5}
+\end{align*}
+Expanding out the operators for the first step and letting $r_x = \frac{.5D\Delta t}{\Delta x^2}$, $r_{xx} = \frac{.5D\alpha^2 \Delta t}{\Delta x^4}$, $r_y = \frac{.5D \Delta t}{\Delta y ^2}$, $ r_{yy} = \frac{.5D\alpha^2 \Delta t}{\Delta y^4}$
+\begin{align*}
+	 &c_{j,k}^{n+.5} - r_x D_{xx}c_{j,k}^{n+.5}(c_{j,k}^n)^2 + r_xD_{xx}c_{j,k}^{n+.5} = r_y D_{yy}(c_{j,k}^n)^3 - r_y D_{yy}c_{j,k}^n - r_{xx} D_{xx}^2 c_{j,k}^n - r_{yy} D_{yy}^2c_{j,k}^n + c_{j,k}^n \\
+	 &c_{j,k}^{n+.5} - r_x \left(c_{j+1,k}^{n+.5}(c_{j+1,k}^n)^2 - 2c_{j,k}^{n+.5}(c_{j,k}^n)^2 + c_{j-1,k}^{n+.5}(c_{j-1,k}^n)^2\right) + r_x\left(c_{j+1,k}^{n+.5} - 2c_{j,k}^{n+.5} + c_{j-1,k}^{n+.5} \right) = \\
+	 & \quad \qquad r_y \left((c_{j,k+1}^n)^3 - 2(c_{j,k}^n)^3 + (c_{j,k-1}^n)^3 \right) - r_y \left(c_{j,k+1}^n - 2c_{j,k}^n + c_{j,k-1}^n\right) - r_{xx} \left( c_{j+2,k}^n -4c_{j+1,k}^n + 6 c_{j,k}^n -4 c_{j-1,k}^n + c_{j-2,k}^n \right) \\
+	 & \quad \qquad- r_{yy} \left(c_{j,k+2}^n - 4c_{j,k+1}^n + 6 c_{j,k}^n -4c_{j,k-1}^n + c_{j,k-2}^n\right) + {c_j,k}^n\\
+	 & 	c_{j+1,k}^{n+.5} \left(r_x - r_x (c_{j+1,k}^n)^2 \right) + c_{j,k}^{n+.5} \left(-2r_x + 2r_x(c_{j,k}^{n})^2 + 1\right) + c_{j-1,k}^{n+.5} \left(r_x - r_x(c_{j-1,k}^{n})^2\right) = r_y \left((c_{j,k+1}^n)^3 - 2(c_{j,k}^n)^3 + (c_{j,k-1}^n)^3 \right) \\
+	 & \quad \qquad - r_y \left(c_{j,k+1}^n - 2c_{j,k}^n + c_{j,k-1}^n\right) - r_{xx} \left( c_{j+2,k}^n -4c_{j+1,k}^n + 6 c_{j,k}^n -4 c_{j-1,k}^n + c_{j-2,k}^n \right) + c_{j,k}^n \\
+	  & \quad \qquad- r_{yy} \left(c_{j,k+2}^n - 4c_{j,k+1}^n + 6 c_{j,k}^n -4c_{j,k-1}^n + c_{j,k-2}^n\right) + {c_j,k}^n\\
+\end{align*}
+This equation can be solved as a system of equations in $N^2$ unknowns. Alternatively, it can also be solved as $N$ system of equations each with $N$ unknowns. This second way is easier to conceptualize and organize, and so will be method illustrated.
+	\begin{gather*}
+\begin{bmatrix}
+-r_x + r_x(c_{1,k}^n)^2+1 & r_x - r_x(c_{2,k}^n)^2 & 0 & 0 & 0 & \ldots &0& 0\\
+%-2r+2r(c_1^n)^2 & 2r-2r(c_2^n)^2 + 1 & 0 & 0 & 0 & \ldots &0& 0\\
+0 & r_x-r_x(c_{1,k}^n)^2 & -2r_x+2r_x(c_{2,k}^n)^2 + 1 & r_x - r_x(c_{3,k}^n)^2 & 0 & \ldots &0& 0\\
+0 & 0 & r_x-r_x(c_{2,k}^n)^2 & -2r_x+2r_x(c_{3,k}^n)^2+1 & r - r_x(c_{4,k}^n)^2 & \ldots & 0&0\\
+\vdots & \vdots & \vdots & \vdots & \vdots & \ddots \\ &  \\
+\end{bmatrix}
+\begin{bmatrix}
+c_{1,k}^{n+.5} \\
+c_{2,k}^{n+.5} \\
+c_{3,k}^{n+.5} \\
+c_{4,k}^{n+.5} \\
+\vdots \\
+c_{N-1,k}^{n+.5}\\
+c_{N,k}^{n+.5}
+\end{bmatrix} \\ =
+\begin{bmatrix}
+ r_y D_{yy}(c_{1,k}^n)^3 - r_y D_{yy}c_{1,k}^n -r_{xx}D_{xx}^2c_{1,k}^n - r_{yy}D_{yy}^2c_{1,k}^n + c_{1,k}^n\\
+r_y D_{yy}(c_{2,k}^n)^3 - r_y D_{yy}c_{2,k}^n  -r_{xx}D_{xx}^2c_{2,k}^n - r_{yy}D_{yy}^2c_{2,k}^n + c_{2,k}^n\\
+r_y D_{yy}(c_{3,k}^n)^3 - r_y D_{yy}c_{3,k}^n -r_{xx}D_{xx}^2c_{3,k}^n - r_{yy}D_{yy}^2c_{3,k}^n + c_{3,k}^n\\
+\vdots \\
+r_y D_{yy}(c_{N,k}^n)^3 - r_y D_{yy}c_{N,k}^n -r_{xx}D_{xx}^2c_{N,k}^n - r_{yy}D_{yy}^2c_{N,k}^n + c_{N,k}^n\\
+\end{bmatrix} 
+\end{gather*}
+This system is solved for $k = 1,2,\ldots,N$.
+Similarly, the second step can be solved as
+\begin{align*}
+		& 	c_{j,k+1}^{n+1} \left(r_y - r_y (c_{j,k+1}^{n+.5})^2 \right) + c_{j,k}^{n+1} \left(-2r_y + 2r_y(c_{j,k}^{n+.5})^2 + 1\right) + c_{j,k-1}^{n+1} \left(r_y - r_y(c_{j,k-1}^{n+.5})^2\right) = r_x \left((c_{j+1,k}^{n+.5})^3 - 2(c_{j,k}^{n+.5})^3 + (c_{j+1,k}^{n+.5})^3 \right) \\
+	& \quad \qquad - r_x \left(c_{j+1,k}^{n+.5} - 2c_{j,k}^{n+.5} + c_{j-1,k}^{n+.5}\right) - r_{xx} \left( c_{j+2,k}^{n+.5} -4c_{j+1,k}^{n+.5} + 6 c_{j,k}^{n+.5} -4 c_{j-1,k}^{n+.5} + c_{j-2,k}^{n+.5} \right) + c_{j,k}^{n+.5} \\
+	& \quad \qquad- r_{yy} \left(c_{j,k+2}^{n+.5} - 4c_{j,k+1}^{n+.5} + 6 c_{j,k}^{n+.5} -4c_{j,k-1}^{n+.5} + c_{j,k-2}^{n+.5}\right) + {c_j,k}^{n+.5}\\
+\end{align*}
+the the N equations to be solved for $j = 1,2,\ldots,N$ are
+	\begin{gather*}
+\begin{bmatrix}
+-r_y + r_y(c_{j,1}^{n+.5})^2+1 & r_y - r_y(c_{j,2}^{n+.5})^2 & 0 & 0 & 0 & \ldots &0& 0\\
+%-2r+2r(c_1^n)^2 & 2r-2r(c_2^n)^2 + 1 & 0 & 0 & 0 & \ldots &0& 0\\
+0 & r_y-r_y(c_{j,1}^{n+.5})^2 & -2r_y+2r_y(c_{j,2}^{n+.5})^2 + 1 & r_y - r_y(c_{j,3}^{n+.5})^2 & 0 & \ldots &0& 0\\
+0 & 0 & r_y-r_y(c_{j,2}^{n+.5})^2 & -2r_y+2r_y(c_{j,3}^{n+.5})^2+1 & r - r_y(c_{j,4}^{n+.5})^2 & \ldots & 0&0\\
+\vdots & \vdots & \vdots & \vdots & \vdots & \ddots \\ &  \\
+\end{bmatrix} \\
+\begin{bmatrix}
+c_{j,1}^{n+1} \\
+c_{j,2}^{n+1} \\
+c_{j,3}^{n+1} \\
+c_{j,4}^{n+1} \\
+\vdots \\
+c_{j,N-1}^{n+1}\\
+c_{j,N}^{n+1}
+\end{bmatrix}  =
+\begin{bmatrix}
+ r_x D_{xx}(c_{j,1}^{n+.5})^3 - r_x D_{xx}c_{j,1}^{n+.5}-r_{xx}D_{xx}^2c_{j,1}^{n+.5} - r_{yy}D_{yy}^2c_{j,1}^{n+.5} + c_{j,1}^{n+.5}\\
+ r_x D_{xx}(c_{j,2}^{n+.5})^3 - r_x D_{xx}c_{j,2}^{n+.5}-r_{xx}D_{xx}^2c_{j,2}^{n+.5} - r_{yy}D_{yy}^2c_{j,2}^{n+.5} + c_{j,2}^{n+.5}\\
+ r_x D_{xx}(c_{j,3}^{n+.5})^3 - r_x D_{xx}c_{j,3}^{n+.5}-r_{xx}D_{xx}^2c_{j,3}^{n+.5} - r_{yy}D_{yy}^2c_{j,3}^{n+.5} + c_{j,3}^{n+.5}\\
+\vdots \\
+ r_x D_{xx}(c_{j,N}^{n+.5})^3 - r_x D_{xx}c_{j,N}^{n+.5}-r_{xx}D_{xx}^2c_{j,N}^{n+.5} - r_{yy}D_{yy}^2c_{j,N}^{n+.5} + c_{j,N}^{n+.5}\\
+\end{bmatrix} 
+\end{gather*}
+
+\section{2-D Simulations}
+The first interesting cases to consider are initial conditions where the two components are initially separated into regions.
+\begin{center}
+\begin{figure}[H]
+	\begin{minipage}{0.5\textwidth}
+		\hspace*{-2cm}
+		\includegraphics[scale=.6]{expl_NR_1}
+	\end{minipage}
+	\begin{minipage}{0.5\textwidth}
+		\includegraphics[scale=.6]{expl_NR_2}
+	\end{minipage}
+	\begin{minipage}{0.5\textwidth}
+		\hspace*{-2cm}
+	\includegraphics[scale=.6]{expl_NR_3}
+\end{minipage}
+	\begin{minipage}{0.5\textwidth}
+	\includegraphics[scale=.6]{expl_NR_4}
+\end{minipage}	
+\begin{minipage}{0.5\textwidth}
+	\hspace*{-2cm}
+\includegraphics[scale=.6]{expl_NR_5}
+\end{minipage}
+\begin{minipage}{0.5\textwidth}
+	\includegraphics[scale=.6]{expl_NR_6}
+\end{minipage}
+\end{figure}
+\begin{figure}[H]
+	\begin{minipage}{0.5\textwidth}
+		\hspace*{-2cm}
+	\includegraphics[scale=.6]{expl_NR_7}
+\end{minipage}
+	\begin{minipage}{0.5\textwidth}
+	\includegraphics[scale=.6]{expl_NR_8}
+\end{minipage}
+\caption{Explicit Scheme, $\Delta t = 1e-11$, $\Delta x = \Delta y = .01$, $\gamma = .2$, $D = 100$, Separated Initial Conditions}
+\end{figure}
+\end{center}
+The next case to consider is two components that are initially randomly distributed. In this case, as the system evolves the two components naturally separate.
+\begin{figure}[H]
+	\begin{minipage}{0.5\textwidth}
+		\hspace*{-2cm}
+		\includegraphics[scale=.6]{expl_R_1}
+	\end{minipage}
+	\begin{minipage}{0.5\textwidth}
+		\includegraphics[scale=.6]{expl_R_2}
+	\end{minipage}
+	\begin{minipage}{0.5\textwidth}
+		\hspace*{-2cm}
+		\includegraphics[scale=.6]{expl_R_3}
+	\end{minipage}
+	\begin{minipage}{0.5\textwidth}
+		\includegraphics[scale=.6]{expl_R_4}
+	\end{minipage}	
+	\begin{minipage}{0.5\textwidth}
+		\hspace*{-2cm}
+		\includegraphics[scale=.6]{expl_R_5}
+	\end{minipage}
+	\begin{minipage}{0.5\textwidth}
+		\includegraphics[scale=.6]{expl_R_6}
+	\end{minipage}
+\end{figure}
+\begin{figure}[H]
+	\begin{minipage}{0.5\textwidth}
+		\hspace*{-2cm}
+		\includegraphics[scale=.6]{expl_R_7}
+	\end{minipage}
+	\begin{minipage}{0.5\textwidth}
+		\includegraphics[scale=.6]{expl_R_8}
+	\end{minipage}
+	\caption{ADI Scheme, $\Delta t = 1e-11$, $\Delta x = \Delta y = .01$, $\gamma = .2$, $D = 100$, Separated Initial Conditions }
+\end{figure}
+\begin{figure}[H]
+	\begin{minipage}{0.5\textwidth}
+		\hspace*{-2cm}
+		\includegraphics[scale=.6]{imp_R_1}
+	\end{minipage}
+	\begin{minipage}{0.5\textwidth}
+		\includegraphics[scale=.6]{imp_R_2}
+	\end{minipage}
+	\begin{minipage}{0.5\textwidth}
+		\hspace*{-2cm}
+		\includegraphics[scale=.6]{imp_R_3}
+	\end{minipage}
+	\begin{minipage}{0.5\textwidth}
+		\includegraphics[scale=.6]{imp_R_4}
+	\end{minipage}	
+	\begin{minipage}{0.5\textwidth}
+		\hspace*{-2cm}
+		\includegraphics[scale=.6]{imp_R_5}
+	\end{minipage}
+	\begin{minipage}{0.5\textwidth}
+		\includegraphics[scale=.6]{imp_R_6}
+	\end{minipage}
+\end{figure}
+\begin{figure}[H]
+	\begin{minipage}{0.5\textwidth}
+		\hspace*{-2cm}
+		\includegraphics[scale=.6]{imp_R_7}
+	\end{minipage}
+	\begin{minipage}{0.5\textwidth}
+		\includegraphics[scale=.6]{imp_R_8}
+	\end{minipage}
+	\caption{ADI Scheme, $\Delta t = 1e-11$, $\Delta x = \Delta y = .01$, $\gamma = .2$, $D = 100$, Random Initial Conditions}
+\end{figure}
+From inspecting the results of the explicit and ADI schemes, we can see that for these parameters and these time steps they both perform reasonably well. As before, another test we can perform to check if these schemes are failing is whether mass is being preserved throughout the system.
+	\begin{adjustwidth}{-2cm}{}
+	\begin{center}
+		\begin{table}
+	\begin{tabular} {c|c|c|c|c|c|c|c|c|}
+		\cline{2-9}
+		&  \multicolumn{8}{c|}{$\int_0^1\int_{0}^{1}c(x,y) \diff{x}\diff{y}$} \\  \cline{2-9}
+		&  \multicolumn{8}{c|}{$\Delta t=1\times10^{-11}$, $\Delta x = \Delta y =.01$, $D = 100$, $\gamma = .2$} \\ \cline{2-9} 
+		scheme & t=0 & t=1e-11 & t=1e-10 & t=1e-9 & t=1e-8 & t=1e-7 & t=1e-6 & t=1e-5 \\ 
+		\hline
+		\multicolumn{1}{|c|}{explicit Random IC}  & -7.4764e-3 &  -7.4646e-3 &  -7.3780e-3 & -7.1783e-3 &-7.1468e-3 & -6.9684e-3 & -6.8760e-3 & -6.7857e-3  \\
+		\hline
+		\multicolumn{1}{|c|}{explicit Separated IC} & -1.8800e-2 &  -1.8798e-2 &  -1.8783e-2 & -1.8732e-2 &-1.8705e-2 & -1.8712e-2 & -1.8698e-2 & -1.8697e-2 \\
+		\hline
+		\multicolumn{1}{|c|}{ADI Random IC}  & -7.4764e-3 &  -7.4647e-3 &  -7.3788e-3 & -7.1785e-3 &-7.1468e-3 & -6.9684e-3 & -6.8760e-3 & -6.7857e-3  \\
+		\hline
+		\multicolumn{1}{|c|}{ADI Separated IC}  & -1.8800e-2 &  -1.8798e-2 &  -1.8783e-2 & -1.8732e-2 &-1.8705e-2 & -1.8712e-2 & -1.8698e-2 & -1.8697e-2  \\
+		\hline
+		&  \multicolumn{8}{c|}{$\Delta t=1\times10^{-10}$, $\Delta x = \Delta y = .01$, $D = 100$, $\gamma = .2$} \\ \cline{2-9} 
+		scheme & t=0 & t=1e-10 & t=1e-9 & t=1e-8 & t=1e-7 & t=1e-6 & t=1e-5 & t = 1e-4\\ 
+		\hline
+		\multicolumn{1}{|c|}{explicit Random IC} & -7.4764e-03 &  -7.3582e-03 & -7.1745e-03 &  -7.1469e-03 & -6.9683e-03 & -6.8760e-03 & -6.7857e-03 & -6.7946e-03 \\
+		\hline
+		\multicolumn{1}{|c|}{explicit Separated IC} & -1.8800e-2 &  -1.8798e-2 &  -1.8783e-2 & -1.8732e-2 &-1.8705e-2 & -1.8712e-2 & -1.8698e-2 & -1.8697e-2 \\
+		\hline
+		\multicolumn{1}{|c|}{ADI Random IC}  & -7.4764e-3 &  -7.3706e-03 &  -7.1765e-03 &  -7.1469e-03 &-6.9683e-03 & -6.8760e-03 & -6.7857e-03 & -6.7946e-03  \\
+		\hline
+		\multicolumn{1}{|c|}{ADI Separated IC}  & -1.8800e-2 &  -1.8782e-2 &  -1.8732e-2 & -1.8705e-2 &-1.8712e-2 & -1.8698e-2 & -1.8697e-2 & -1.8732e-2  \\
+		\hline
+		&  \multicolumn{8}{c|}{$\Delta t=1\times10^{-9}$, $\Delta x = \Delta y .01$, $D = 100$, $\gamma = .2$} \\ \cline{2-9} 
+		scheme & t=0 & t=1e-9 & t=1e-8 & t=1e-7 & t=1e-6 & t=1e-5 & t = 1e-4 & 1e-3\\ 
+			\hline
+		\multicolumn{1}{|c|}{explicit Random IC} & -7.4764e-03 &  -6.2944e-03 & NaN &  NaN & NaN & NaN &NaN  & NaN \\
+		\hline
+		\multicolumn{1}{|c|}{explicit Separated IC} & -1.8800e-2 &  -1.8600e-02 &  NaN & NaN &  NaN & NaN & NaN &NaN  \\
+		\hline
+		\multicolumn{1}{|c|}{ADI Random IC}  & -7.4764e-3 &  -7.5343e-03 &  NaN & NaN &  NaN & NaN & NaN &NaN  \\
+		\hline
+		\multicolumn{1}{|c|}{ADI Separated IC}  & -1.8800e-2 &  -1.8768e-02&  NaN & NaN &  NaN & NaN & NaN &NaN  \\
+		\hline
+	\end{tabular}
+\caption{Verification of mass conservation for various schemes}
+\end{table}
+\end{center}
+\end{adjustwidth}
+\section{Run time: Matlab vs Fortran}
+Although Matlab is a very practical programming language for engineering and scientific applications, one downfall of the language is that it can take an unreasonable amount of time to run complex calculations and simulations. The same problem applies to other high level programming languages such as Python. One way to get around this is to write modules in a lower level language to do the most computationally expensive calculations and then import them. This section seeks to address the question: How much faster can these calculations be run if they are done in a Python script importing Fortran modules versus just Matlab?
+\\
+\\
+\textbf{Validation of Fortran Code}
+\\
+\\
+To validate that the Fortran code works, it is necessary to verify that it reproduces the results of the Matlab code used previously. This was tested for several of the simulations previously reported, and in each case the results matched identically with the only difference being in extremely small digits. \\
+	\begin{adjustwidth}{-2.5cm}{}
+	\begin{center}
+		\begin{table}[H]
+	\begin{adjustbox}{angle=90}
+		\begin{tabular} {c|c|c|c|c|c|c|c|c|}
+			\cline{2-9}
+			&  \multicolumn{8}{c|}{Run time (seconds)} \\  \cline{2-9}
+			&  \multicolumn{8}{c|}{$\Delta t=1\times10^{-11}$, $\Delta x = \Delta y =.01$, $D = 100$, $\gamma = .2$} \\ \cline{2-9} 
+			Scheme & t=0 & t=1e-11 & t=1e-10 & t=1e-9 & t=1e-8 & t=1e-7 & t=1e-6 & t=1e-5 \\ 
+			\hline
+			\multicolumn{1}{|c|}{Fortran, Explicit, Random IC} 	& 0 & 1.2660e-3 &   2.2570e2 &  1.3308e-1 & 1.1357 & 1.1060e1 & 1.1018e2 & 1.1011e3  \\
+			\hline
+			\multicolumn{1}{|c|}{Matlab, Explicit, Random IC} 	& 0 &  4.6429e-02 &   2.2316e-01 &  1.6081 & 1.5275e+01 & 1.5121e+02 & 1.5039e+03 & 1.5003e+04 \\
+			\hline
+			\multicolumn{1}{|c|}{Fortran, Explicit, Separated IC} & 0 & 1.2281e-3 &  1.7526e-2 & 1.2600e-1 & 1.1251 & 1.1019e1 & 1.0982e2 & 1.0977e3  \\
+			\hline
+			\multicolumn{1}{|c|}{Matlab, Explicit, Separated IC} & 0 & 5.4452e-02 & 1.7891e-01 & 1.4944 & 1.5036e+01 &1.5143e+02 & 1.5326e+03 & 1.5504e+04  \\
+			\hline
+			\multicolumn{1}{|c|}{Fortran, ADI, Separated IC}  & 0 &  4.3671e-3 &  5.8516e-2 & 4.3944e-1 &4.0513 & 3.9304e1 & 3.9736e2 & 3.9508e3  \\
+			\hline
+			\multicolumn{1}{|c|}{Matlab, ADI, Separated IC}  & 0 &  7.6708e-02 &   3.0411e-01 &2.5384 &2.5113e+01 &2.5009e+02 & 2.5166e+03 & 2.5444e+04 \\
+			\hline
+			\multicolumn{1}{|c|}{Fortran, ADI, Random IC}  & 0 &  4.8969e-3 &  1.5951e-1 & 5.9967e-1 &4.1643 & 3.9603e1 & 1.5715e2 & 1.5710e3  \\
+			\hline
+			\multicolumn{1}{|c|}{Matlab, ADI, Random IC}  & 0 &  8.3956e-02 &  3.2848e-01 &  2.6590 & 2.5833e+01 & 2.5658e+02 &2.5640e+03 & 2.5690e+04  \\
+			\hline
+			&  \multicolumn{8}{c|}{$\Delta t=1\times10^{-10}$, $\Delta x = \Delta y = .01$, $D = 100$, $\gamma = .2$} \\ \cline{2-9} 
+			scheme & t=0 & t=1e-10 & t=1e-9 & t=1e-8 & t=1e-7 & t=1e-6 & t=1e-5 & t=1e-4\\ 
+			\hline
+			\multicolumn{1}{|c|}{Fortran, Explicit, Random IC} & 0 &  1.2760e-03 &  2.2863e-02 &  1.3348e-01 & 1.1376 & 1.1046e+01 & 1.1007e+02 & 1.0996e+03 \\
+			\hline
+			\multicolumn{1}{|c|}{Matlab, Explicit, Random IC} & 0 &     5.9090e-02 &  2.2038e-01&   1.6775e+00  & 1.6073e+01 &  1.5912e+02&   1.5751e+032 &  1.5768e+04 \\
+			\hline
+			\multicolumn{1}{|c|}{Fortran, Explicit, Separated IC} & 0 & 1.2069e-03 &  1.7302e-02 &  1.2632e-01 & 1.1207 & 1.0963e+01 & 1.0926e+02 & 1.0922e+03  \\
+			\hline
+			\multicolumn{1}{|c|}{Matlab, Explicit, Separated IC} & 0 & 4.2587e-02 &  1.6187e-01&   1.4696&  1.4567e+01  & 1.4721e+02 &  1.4883e+03  & 1.4961e+04 \\
+			\hline
+			\multicolumn{1}{|c|}{Fortran, ADI, Separated IC}  & 0 &  1.6959e-03 &  2.3126e-02 &  1.7563e-01 &1.5998 & 1.5740e+01 & 1.5698e+02 & 1.5686e+03 \\
+			\hline
+			\multicolumn{1}{|c|}{Matlab, ADI, Separated IC}  & 0 &  1.2708e-01  & 3.5641e-01&   2.6060  & 2.5148e+01 &  2.5184e+02  & 2.5374e+03  & 2.5436e+04 \\
+			\hline
+			\multicolumn{1}{|c|}{Fortran, ADI, Random IC}  & 0 &  1.7390e-03 &  2.7306e-02 & 1.7965e-01 &1.6026 & 1.5730e+01 & 1.5760e+02 & 1.5684e+03  \\
+			\hline
+			\multicolumn{1}{|c|}{Matlab, ADI, Random IC}  & 0 &  8.9244e-02  & 3.5411e-01 &  2.6927 &  2.5947e+01  & 2.5635e+02 &  2.5610e+03 &   2.5659e+04 \\
+			\hline
+		\end{tabular}
+	\end{adjustbox}
+\caption{Comparison of run times using Matlab and a Fortran module called from a Python script.}
+\end{table}
+	\end{center}
+\end{adjustwidth}
+\section{Conclusion}
+Based on the results seen here, we see that for the parameters shown, the stability of explicit and implicit schemes breaks down when the step size is less than $\Delta x = \Delta y = 1\times 10^{-10}$. This approximately agrees with the stability condition previously described. For very fine meshes, the explicit and semi-implicit/ADI schemes seem to perform reasonably well, but the implicit methods do seem to have better stability. If the step sizes were more closely investigated, it is very likely we would find a point where the semi-implicit schemes perform significantly better.
+
+In terms of run time, we see that the Fortran code performs \textit{significantly} than the Matlab code, on the order of an entire order of magnitude better. Whereas it takes the Fortran code anywhere from 10-30 minutes to complete 1 million integration steps, it takes the Matlab code roughly 7 hours. Moreover, the Fortran was not compiled to be optimized for the architecture being used. Based on this, it is reasonable to say that an engineer solving computationally intensive problem can very easily save orders of magnitude of time by just simply writing Fortran modules with little worry about optimizing them for performance. 
+\section{Appendix}
+	1-D explicit scheme
+	\lstinputlisting{CHproject1D_explicit.m}
+	1-D semi-implicit scheme
+	\lstinputlisting{CHproject1D_semi.m}
+	2-D explicit scheme
+	\lstinputlisting{CHproject_2D_explicit2.m}
+	2-D ADI scheme
+	\lstinputlisting{CHproject_2D_implicit2.m}
+	2-D plotting script
+	\lstinputlisting{plot2d.m}
+	Python 2-D base code (explicit and ADI)
+	\lstinputlisting[language=Python]{PDE_project.py}
+	Fortran subroutine, 2-D explicit scheme
+	\lstinputlisting[language=Fortran]{twod_explicit.f90}
+	Fortran subroutine, 2-D ADI scheme
+	\lstinputlisting{twod_ADIv2.f90}
+	Python Plotting script (results were plotted using Matlab)
+	\lstinputlisting{plot2d_python.m}
+\end{document}
+
+%%references: 
+% https://people.sc.fsu.edu/~jpeterson/nde_book4.pdf
+%http://www.math.ubc.ca/~feldman/m256/richard.pdf
